@@ -10,6 +10,13 @@ from tkinter import filedialog
 from matplotlib import pyplot as plt
 from PIL import Image, ImageTk
 from tqdm import tqdm
+import tkinter as tk
+from tkinter import ttk, messagebox
+import threading
+import csv
+
+
+# === SIMD / NON-SIMD FUNCTIONS ===
 
 @vectorize([float32(float32, float32, float32)], target='parallel')
 def grayscale_simd(r, g, b):
@@ -46,11 +53,11 @@ def sobel_nonsimd(gray):
     gy = cv2.filter2D(gray, -1, Ky)
     return cv2.magnitude(gx.astype(np.float32), gy.astype(np.float32)).astype(np.uint8)
 
-# === CLI BATCH PROCESS ===
 def process_batch(input_folder="input"):
     grayscale_results = []
     edge_results = []
 
+    # Kumpulkan semua file yang valid
     all_files = []
     for root, dirs, files in os.walk(input_folder):
         for filename in files:
@@ -67,14 +74,16 @@ def process_batch(input_folder="input"):
             continue
 
         base = os.path.splitext(filename)[0]
-
         r, g, b = cv2.split(img.astype(np.float32))
+
+        # Grayscale SIMD
         start = time.time()
         gray_simd = grayscale_simd(r, g, b).astype(np.uint8)
         t_simd = time.time() - start
         os.makedirs("output/grayscale_simd", exist_ok=True)
         cv2.imwrite(f"output/grayscale_simd/{base}.jpg", gray_simd)
 
+        # Grayscale Non-SIMD
         start = time.time()
         gray_nonsimd = grayscale_nonsimd(img)
         t_nonsimd = time.time() - start
@@ -83,12 +92,14 @@ def process_batch(input_folder="input"):
 
         grayscale_results.append([filename, f"{t_simd:.5f}", f"{t_nonsimd:.5f}"])
 
+        # Sobel SIMD
         start = time.time()
         edge_simd = sobel_simd(gray_simd)
         t_simd_edge = time.time() - start
         os.makedirs("output/edge_simd", exist_ok=True)
         cv2.imwrite(f"output/edge_simd/{base}.jpg", edge_simd)
 
+        # Sobel Non-SIMD
         start = time.time()
         edge_nonsimd = sobel_nonsimd(gray_nonsimd)
         t_nonsimd_edge = time.time() - start
@@ -97,109 +108,98 @@ def process_batch(input_folder="input"):
 
         edge_results.append([filename, f"{t_simd_edge:.5f}", f"{t_nonsimd_edge:.5f}"])
 
-    print("\n📊 Grayscale Benchmark (detik):")
-    print(tabulate(grayscale_results, headers=["File", "SIMD", "Non-SIMD"], tablefmt="github"))
-
-    print("\n📊 Edge Detection Benchmark (detik):")
-    print(tabulate(edge_results, headers=["File", "SIMD", "Non-SIMD"], tablefmt="github"))
-
-    grayscale_results = []
-    edge_results = []
-
-    # Walk folder input secara rekursif
-    for root, dirs, files in os.walk(input_folder):
-        for filename in files:
-            if not filename.lower().endswith(('.jpg', '.png', '.jpeg')):
-                continue
-
-            img_path = os.path.join(root, filename)
-            img = cv2.imread(img_path)
-            if img is None:
-                continue
-
-            base = os.path.splitext(filename)[0]
-
-            r, g, b = cv2.split(img.astype(np.float32))
-            start = time.time()
-            gray_simd = grayscale_simd(r, g, b).astype(np.uint8)
-            t_simd = time.time() - start
-            os.makedirs("output/grayscale_simd", exist_ok=True)
-            cv2.imwrite(f"output/grayscale_simd/{base}.jpg", gray_simd)
-
-            start = time.time()
-            gray_nonsimd = grayscale_nonsimd(img)
-            t_nonsimd = time.time() - start
-            os.makedirs("output/grayscale_nonsimd", exist_ok=True)
-            cv2.imwrite(f"output/grayscale_nonsimd/{base}.jpg", gray_nonsimd)
-
-            grayscale_results.append([filename, f"{t_simd:.5f}", f"{t_nonsimd:.5f}"])
-
-            start = time.time()
-            edge_simd = sobel_simd(gray_simd)
-            t_simd_edge = time.time() - start
-            os.makedirs("output/edge_simd", exist_ok=True)
-            cv2.imwrite(f"output/edge_simd/{base}.jpg", edge_simd)
-
-            start = time.time()
-            edge_nonsimd = sobel_nonsimd(gray_nonsimd)
-            t_nonsimd_edge = time.time() - start
-            os.makedirs("output/edge_nonsimd", exist_ok=True)
-            cv2.imwrite(f"output/edge_nonsimd/{base}.jpg", edge_nonsimd)
-
-            edge_results.append([filename, f"{t_simd_edge:.5f}", f"{t_nonsimd_edge:.5f}"])
-
-    print("\n📊 Grayscale Benchmark (detik):")
-    print(tabulate(grayscale_results, headers=["File", "SIMD", "Non-SIMD"], tablefmt="github"))
-
-    print("\n📊 Edge Detection Benchmark (detik):")
-    print(tabulate(edge_results, headers=["File", "SIMD", "Non-SIMD"], tablefmt="github"))
-
-    grayscale_results = []
-    edge_results = []
-
-    for filename in os.listdir(input_folder):
-        if not filename.lower().endswith(('.jpg', '.png', '.jpeg')):
-            continue
-
-        img_path = os.path.join(input_folder, filename)
-        img = cv2.imread(img_path)
-        if img is None:
-            continue
-
-        base = os.path.splitext(filename)[0]
-        r, g, b = cv2.split(img.astype(np.float32))
-
-        start = time.time()
-        gray_simd = grayscale_simd(r, g, b).astype(np.uint8)
-        t_simd = time.time() - start
-
-        start = time.time()
-        gray_nonsimd = grayscale_nonsimd(img)
-        t_nonsimd = time.time() - start
-
-        grayscale_results.append([filename, f"{t_simd:.5f}", f"{t_nonsimd:.5f}"])
-
-        start = time.time()
-        edge_simd = sobel_simd(gray_simd)
-        t_simd_edge = time.time() - start
-
-        start = time.time()
-        edge_nonsimd = sobel_nonsimd(gray_nonsimd)
-        t_nonsimd_edge = time.time() - start
-
-        edge_results.append([filename, f"{t_simd_edge:.5f}", f"{t_nonsimd_edge:.5f}"])
-
+        # Simpan juga versi output umum (optional)
         os.makedirs("output", exist_ok=True)
         cv2.imwrite(f"output/{base}_gray_simd.jpg", gray_simd)
         cv2.imwrite(f"output/{base}_gray_nonsimd.jpg", gray_nonsimd)
         cv2.imwrite(f"output/{base}_edge_simd.jpg", edge_simd)
         cv2.imwrite(f"output/{base}_edge_nonsimd.jpg", edge_nonsimd)
 
-    print("\n📊 Grayscale Benchmark:")
+    # Tampilkan hasil di CLI
+    print("\n Grayscale Benchmark (detik):")
     print(tabulate(grayscale_results, headers=["File", "SIMD", "Non-SIMD"], tablefmt="github"))
 
-    print("\n📊 Edge Detection Benchmark:")
+    print("\n Edge Detection Benchmark (detik):")
     print(tabulate(edge_results, headers=["File", "SIMD", "Non-SIMD"], tablefmt="github"))
+
+    return grayscale_results, edge_results
+
+def show_cli_result_gui(grayscale_results, edge_results):
+    result_window = tk.Toplevel()
+    result_window.title("Hasil Benchmark CLI")
+    result_window.geometry("800x600")
+
+    tab_control = ttk.Notebook(result_window)
+
+    # Tab Grayscale
+    tab_gray = ttk.Frame(tab_control)
+    tab_control.add(tab_gray, text="Grayscale")
+
+    tree_gray = ttk.Treeview(tab_gray, columns=("file", "simd", "nonsimd"), show="headings")
+    tree_gray.heading("file", text="File")
+    tree_gray.heading("simd", text="SIMD (s)")
+    tree_gray.heading("nonsimd", text="Non-SIMD (s)")
+
+    for row in grayscale_results:
+        tree_gray.insert("", "end", values=row)
+
+    tree_gray.pack(fill="both", expand=True)
+
+    # Tab Edge Detection
+    tab_edge = ttk.Frame(tab_control)
+    tab_control.add(tab_edge, text="Edge Detection")
+
+    tree_edge = ttk.Treeview(tab_edge, columns=("file", "simd", "nonsimd"), show="headings")
+    tree_edge.heading("file", text="File")
+    tree_edge.heading("simd", text="SIMD (s)")
+    tree_edge.heading("nonsimd", text="Non-SIMD (s)")
+
+    for row in edge_results:
+        tree_edge.insert("", "end", values=row)
+
+    tree_edge.pack(fill="both", expand=True)
+
+    tab_control.pack(expand=True, fill="both")
+    
+    def export_csv():
+        file_path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV Files", "*.csv")])
+        if not file_path:
+            return
+
+        with open(file_path, "w", newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(["Grayscale Benchmark"])
+            writer.writerow(["File", "SIMD", "Non-SIMD"])
+            writer.writerows(grayscale_results)
+
+            writer.writerow([])
+            writer.writerow(["Edge Detection Benchmark"])
+            writer.writerow(["File", "SIMD", "Non-SIMD"])
+            writer.writerows(edge_results)
+
+        messagebox.showinfo("Sukses", f"Hasil diekspor ke {file_path}")
+
+    export_button = tk.Button(result_window, text="Ekspor ke CSV", command=export_csv)
+    export_button.pack(pady=10)
+
+    
+def run_cli_batch():
+    popup = tk.Toplevel()
+    popup.title("Proses Berjalan")
+    popup.geometry("300x100")
+    label = tk.Label(popup, text="Sedang memproses gambar...\nMohon tunggu...")
+    label.pack(expand=True)
+
+    def run_batch():
+        try:
+            grayscale_results, edge_results = process_batch("input")
+            popup.destroy()
+            show_cli_result_gui(grayscale_results, edge_results)
+        except Exception as e:
+            popup.destroy()
+            messagebox.showerror("Error", f"Gagal menjalankan batch CLI:\n{str(e)}")
+
+    threading.Thread(target=run_batch).start()
 
 def run_gui():
     def process_image(path):
@@ -267,6 +267,7 @@ def run_gui():
             result = process_image(path)
             show_result(result)
 
+    # === GUI Init ===
     window = tk.Tk()
     window.title("GraviPix (Grayscale & Vision Pixel)- SIMD vs Non-SIMD")
     window.geometry("1100x400")
@@ -280,6 +281,8 @@ def run_gui():
 
     window.mainloop()
 
+# === ENTRY POINT ===
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=["cli", "gui"], required=True)
@@ -289,5 +292,5 @@ if __name__ == "__main__":
     if args.mode == "cli":
         process_batch(args.folder)
     else:
-
+        # jalankan GUI (tidak perlu argumen folder)
         run_gui()
