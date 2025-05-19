@@ -1,0 +1,315 @@
+import os
+import cv2
+import time
+import numpy as np
+import argparse
+from numba import njit, prange, vectorize, float32
+from tabulate import tabulate
+import tkinter as tk
+from tkinter import filedialog
+from matplotlib import pyplot as plt
+from PIL import Image, ImageTk
+from tqdm import tqdm
+
+# === SIMD / NON-SIMD FUNCTIONS ===
+
+@vectorize([float32(float32, float32, float32)], target='parallel')
+def grayscale_simd(r, g, b):
+    return 0.299 * r + 0.587 * g + 0.114 * b
+
+def grayscale_nonsimd(img):
+    r = img[:, :, 2]
+    g = img[:, :, 1]
+    b = img[:, :, 0]
+    return (0.299 * r + 0.587 * g + 0.114 * b).astype(np.uint8)
+
+@njit(parallel=True)
+def sobel_simd(gray):
+    h, w = gray.shape
+    out = np.zeros_like(gray)
+    Kx = np.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]])
+    Ky = np.array([[-1, -2, -1], [0, 0, 0], [1, 2, 1]])
+    for i in prange(1, h-1):
+        for j in range(1, w-1):
+            gx = 0.0
+            gy = 0.0
+            for m in range(3):
+                for n in range(3):
+                    val = gray[i+m-1, j+n-1]
+                    gx += Kx[m,n] * val
+                    gy += Ky[m,n] * val
+            out[i,j] = min(255, int(np.sqrt(gx**2 + gy**2)))
+    return out
+
+def sobel_nonsimd(gray):
+    Kx = np.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]])
+    Ky = np.array([[-1, -2, -1], [0, 0, 0], [1, 2, 1]])
+    gx = cv2.filter2D(gray, -1, Kx)
+    gy = cv2.filter2D(gray, -1, Ky)
+    return cv2.magnitude(gx.astype(np.float32), gy.astype(np.float32)).astype(np.uint8)
+
+# === CLI BATCH PROCESS ===
+def process_batch(input_folder="input"):
+    grayscale_results = []
+    edge_results = []
+
+    # Kumpulkan semua file dulu agar kita tahu totalnya (untuk progress bar)
+    all_files = []
+    for root, dirs, files in os.walk(input_folder):
+        for filename in files:
+            if filename.lower().endswith(('.jpg', '.png', '.jpeg')):
+                all_files.append(os.path.join(root, filename))
+
+    print(f"Memproses {len(all_files)} file gambar di '{input_folder}'...")
+
+    # Progress bar tqdm
+    for img_path in tqdm(all_files, desc="Proses gambar"):
+        filename = os.path.basename(img_path)
+        img = cv2.imread(img_path)
+        if img is None:
+            print(f"Warning: gagal membaca {img_path}, dilewati.")
+            continue
+
+        base = os.path.splitext(filename)[0]
+
+        # Grayscale SIMD
+        r, g, b = cv2.split(img.astype(np.float32))
+        start = time.time()
+        gray_simd = grayscale_simd(r, g, b).astype(np.uint8)
+        t_simd = time.time() - start
+        os.makedirs("output/grayscale_simd", exist_ok=True)
+        cv2.imwrite(f"output/grayscale_simd/{base}.jpg", gray_simd)
+
+        # Grayscale Non-SIMD
+        start = time.time()
+        gray_nonsimd = grayscale_nonsimd(img)
+        t_nonsimd = time.time() - start
+        os.makedirs("output/grayscale_nonsimd", exist_ok=True)
+        cv2.imwrite(f"output/grayscale_nonsimd/{base}.jpg", gray_nonsimd)
+
+        grayscale_results.append([filename, f"{t_simd:.5f}", f"{t_nonsimd:.5f}"])
+
+        # Edge Detection SIMD
+        start = time.time()
+        edge_simd = sobel_simd(gray_simd)
+        t_simd_edge = time.time() - start
+        os.makedirs("output/edge_simd", exist_ok=True)
+        cv2.imwrite(f"output/edge_simd/{base}.jpg", edge_simd)
+
+        # Edge Detection Non-SIMD
+        start = time.time()
+        edge_nonsimd = sobel_nonsimd(gray_nonsimd)
+        t_nonsimd_edge = time.time() - start
+        os.makedirs("output/edge_nonsimd", exist_ok=True)
+        cv2.imwrite(f"output/edge_nonsimd/{base}.jpg", edge_nonsimd)
+
+        edge_results.append([filename, f"{t_simd_edge:.5f}", f"{t_nonsimd_edge:.5f}"])
+
+    # PRINT HASIL
+    print("\n📊 Grayscale Benchmark (detik):")
+    print(tabulate(grayscale_results, headers=["File", "SIMD", "Non-SIMD"], tablefmt="github"))
+
+    print("\n📊 Edge Detection Benchmark (detik):")
+    print(tabulate(edge_results, headers=["File", "SIMD", "Non-SIMD"], tablefmt="github"))
+
+    grayscale_results = []
+    edge_results = []
+
+    # Walk folder input secara rekursif
+    for root, dirs, files in os.walk(input_folder):
+        for filename in files:
+            if not filename.lower().endswith(('.jpg', '.png', '.jpeg')):
+                continue
+
+            img_path = os.path.join(root, filename)
+            img = cv2.imread(img_path)
+            if img is None:
+                continue
+
+            base = os.path.splitext(filename)[0]
+
+            # Grayscale SIMD
+            r, g, b = cv2.split(img.astype(np.float32))
+            start = time.time()
+            gray_simd = grayscale_simd(r, g, b).astype(np.uint8)
+            t_simd = time.time() - start
+            os.makedirs("output/grayscale_simd", exist_ok=True)
+            cv2.imwrite(f"output/grayscale_simd/{base}.jpg", gray_simd)
+
+            # Grayscale Non-SIMD
+            start = time.time()
+            gray_nonsimd = grayscale_nonsimd(img)
+            t_nonsimd = time.time() - start
+            os.makedirs("output/grayscale_nonsimd", exist_ok=True)
+            cv2.imwrite(f"output/grayscale_nonsimd/{base}.jpg", gray_nonsimd)
+
+            grayscale_results.append([filename, f"{t_simd:.5f}", f"{t_nonsimd:.5f}"])
+
+            # Edge Detection SIMD
+            start = time.time()
+            edge_simd = sobel_simd(gray_simd)
+            t_simd_edge = time.time() - start
+            os.makedirs("output/edge_simd", exist_ok=True)
+            cv2.imwrite(f"output/edge_simd/{base}.jpg", edge_simd)
+
+            # Edge Detection Non-SIMD
+            start = time.time()
+            edge_nonsimd = sobel_nonsimd(gray_nonsimd)
+            t_nonsimd_edge = time.time() - start
+            os.makedirs("output/edge_nonsimd", exist_ok=True)
+            cv2.imwrite(f"output/edge_nonsimd/{base}.jpg", edge_nonsimd)
+
+            edge_results.append([filename, f"{t_simd_edge:.5f}", f"{t_nonsimd_edge:.5f}"])
+
+    # PRINT HASIL
+    print("\n📊 Grayscale Benchmark (detik):")
+    print(tabulate(grayscale_results, headers=["File", "SIMD", "Non-SIMD"], tablefmt="github"))
+
+    print("\n📊 Edge Detection Benchmark (detik):")
+    print(tabulate(edge_results, headers=["File", "SIMD", "Non-SIMD"], tablefmt="github"))
+
+    grayscale_results = []
+    edge_results = []
+
+    for filename in os.listdir(input_folder):
+        if not filename.lower().endswith(('.jpg', '.png', '.jpeg')):
+            continue
+
+        img_path = os.path.join(input_folder, filename)
+        img = cv2.imread(img_path)
+        if img is None:
+            continue
+
+        base = os.path.splitext(filename)[0]
+        r, g, b = cv2.split(img.astype(np.float32))
+
+        # Grayscale
+        start = time.time()
+        gray_simd = grayscale_simd(r, g, b).astype(np.uint8)
+        t_simd = time.time() - start
+
+        start = time.time()
+        gray_nonsimd = grayscale_nonsimd(img)
+        t_nonsimd = time.time() - start
+
+        grayscale_results.append([filename, f"{t_simd:.5f}", f"{t_nonsimd:.5f}"])
+
+        # Edge Detection
+        start = time.time()
+        edge_simd = sobel_simd(gray_simd)
+        t_simd_edge = time.time() - start
+
+        start = time.time()
+        edge_nonsimd = sobel_nonsimd(gray_nonsimd)
+        t_nonsimd_edge = time.time() - start
+
+        edge_results.append([filename, f"{t_simd_edge:.5f}", f"{t_nonsimd_edge:.5f}"])
+
+        # Save
+        os.makedirs("output", exist_ok=True)
+        cv2.imwrite(f"output/{base}_gray_simd.jpg", gray_simd)
+        cv2.imwrite(f"output/{base}_gray_nonsimd.jpg", gray_nonsimd)
+        cv2.imwrite(f"output/{base}_edge_simd.jpg", edge_simd)
+        cv2.imwrite(f"output/{base}_edge_nonsimd.jpg", edge_nonsimd)
+
+    print("\n📊 Grayscale Benchmark:")
+    print(tabulate(grayscale_results, headers=["File", "SIMD", "Non-SIMD"], tablefmt="github"))
+
+    print("\n📊 Edge Detection Benchmark:")
+    print(tabulate(edge_results, headers=["File", "SIMD", "Non-SIMD"], tablefmt="github"))
+
+# === GUI MODE ===
+
+def run_gui():
+    def process_image(path):
+        img = cv2.imread(path)
+        r, g, b = cv2.split(img.astype(np.float32))
+
+        t0 = time.time()
+        gray_simd = grayscale_simd(r, g, b).astype(np.uint8)
+        t1 = time.time()
+        gray_nonsimd = grayscale_nonsimd(img)
+        t2 = time.time()
+
+        edge_simd = sobel_simd(gray_simd)
+        t3 = time.time()
+        edge_nonsimd = sobel_nonsimd(gray_nonsimd)
+        t4 = time.time()
+
+        return {
+            "gray_simd": gray_simd,
+            "gray_nonsimd": gray_nonsimd,
+            "edge_simd": edge_simd,
+            "edge_nonsimd": edge_nonsimd,
+            "times": {
+                "gray_simd": t1 - t0,
+                "gray_nonsimd": t2 - t1,
+                "edge_simd": t3 - t2,
+                "edge_nonsimd": t4 - t3
+            }
+        }
+
+    def show_result(result):
+        def show_image(title, img_array):
+            img_rgb = cv2.cvtColor(img_array, cv2.COLOR_GRAY2RGB)
+            img_pil = Image.fromarray(img_rgb)
+            img_tk = ImageTk.PhotoImage(img_pil.resize((256, 256)))
+            label = tk.Label(img_frame, text=title, image=img_tk, compound=tk.TOP)
+            label.image = img_tk
+            label.pack(side=tk.LEFT, padx=10)
+
+        # Clear old
+        for widget in img_frame.winfo_children():
+            widget.destroy()
+
+        show_image("Grayscale SIMD", result["gray_simd"])
+        show_image("Grayscale Non-SIMD", result["gray_nonsimd"])
+        show_image("Edge SIMD", result["edge_simd"])
+        show_image("Edge Non-SIMD", result["edge_nonsimd"])
+
+        # Show chart
+        times = result["times"]
+        keys = list(times.keys())
+        values = [times[k] for k in keys]
+
+        plt.figure(figsize=(6, 4))
+        plt.bar(keys, values, color=['green', 'blue', 'red', 'orange'])
+        plt.title("Execution Time Comparison")
+        plt.ylabel("Seconds")
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        plt.show()
+
+    def upload_image():
+        path = filedialog.askopenfilename(filetypes=[("Images", "*.jpg *.png *.jpeg")])
+        if path:
+            result = process_image(path)
+            show_result(result)
+
+    # === GUI Init ===
+    window = tk.Tk()
+    window.title("Parallel Image Processing (SIMD vs Non-SIMD)")
+    window.geometry("1100x400")
+
+    btn = tk.Button(window, text="Upload Image", command=upload_image, font=("Arial", 14), bg="skyblue")
+    btn.pack(pady=10)
+
+    global img_frame
+    img_frame = tk.Frame(window)
+    img_frame.pack()
+
+    window.mainloop()
+
+# === ENTRY POINT ===
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mode", choices=["cli", "gui"], required=True)
+    parser.add_argument("--folder", default="input")
+    args = parser.parse_args()
+
+    if args.mode == "cli":
+        process_batch(args.folder)
+    else:
+        # jalankan GUI (tidak perlu argumen folder)
+        run_gui()
