@@ -52,7 +52,7 @@ def select_cli_folder(status_label, btn_cli, btn_gui, progress):
 
 def main():
     root = tk.Tk()
-    root.title("Parallel Image Processing - Pilih Mode")
+    root.title("GraviPix (Grayscale & Vision Pixel)")
 
     w, h = 420, 260
     ws = root.winfo_screenwidth()

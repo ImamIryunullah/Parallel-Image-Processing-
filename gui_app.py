@@ -141,7 +141,7 @@ def show_time_chart(grayscale_times, edge_times, root):
 
 def launch_gui():
     root = Tk()
-    root.title("Parallel Image Processing (SIMD)")
+    root.title("GraviPix (Grayscale & Vision Pixel)")
 
     Label(root, text="Parallel Image Processor", font=("Helvetica", 16, "bold")).pack(pady=10)
 
