@@ -15,9 +15,6 @@ from tkinter import ttk, messagebox
 import threading
 import csv
 
-
-# === SIMD / NON-SIMD FUNCTIONS ===
-
 @vectorize([float32(float32, float32, float32)], target='parallel')
 def grayscale_simd(r, g, b):
     return 0.299 * r + 0.587 * g + 0.114 * b
@@ -57,7 +54,6 @@ def process_batch(input_folder="input"):
     grayscale_results = []
     edge_results = []
 
-    # Kumpulkan semua file yang valid
     all_files = []
     for root, dirs, files in os.walk(input_folder):
         for filename in files:
@@ -76,14 +72,12 @@ def process_batch(input_folder="input"):
         base = os.path.splitext(filename)[0]
         r, g, b = cv2.split(img.astype(np.float32))
 
-        # Grayscale SIMD
         start = time.time()
         gray_simd = grayscale_simd(r, g, b).astype(np.uint8)
         t_simd = time.time() - start
         os.makedirs("output/grayscale_simd", exist_ok=True)
         cv2.imwrite(f"output/grayscale_simd/{base}.jpg", gray_simd)
 
-        # Grayscale Non-SIMD
         start = time.time()
         gray_nonsimd = grayscale_nonsimd(img)
         t_nonsimd = time.time() - start
@@ -92,14 +86,12 @@ def process_batch(input_folder="input"):
 
         grayscale_results.append([filename, f"{t_simd:.5f}", f"{t_nonsimd:.5f}"])
 
-        # Sobel SIMD
         start = time.time()
         edge_simd = sobel_simd(gray_simd)
         t_simd_edge = time.time() - start
         os.makedirs("output/edge_simd", exist_ok=True)
         cv2.imwrite(f"output/edge_simd/{base}.jpg", edge_simd)
 
-        # Sobel Non-SIMD
         start = time.time()
         edge_nonsimd = sobel_nonsimd(gray_nonsimd)
         t_nonsimd_edge = time.time() - start
@@ -108,14 +100,12 @@ def process_batch(input_folder="input"):
 
         edge_results.append([filename, f"{t_simd_edge:.5f}", f"{t_nonsimd_edge:.5f}"])
 
-        # Simpan juga versi output umum (optional)
         os.makedirs("output", exist_ok=True)
         cv2.imwrite(f"output/{base}_gray_simd.jpg", gray_simd)
         cv2.imwrite(f"output/{base}_gray_nonsimd.jpg", gray_nonsimd)
         cv2.imwrite(f"output/{base}_edge_simd.jpg", edge_simd)
         cv2.imwrite(f"output/{base}_edge_nonsimd.jpg", edge_nonsimd)
 
-    # Tampilkan hasil di CLI
     print("\n Grayscale Benchmark (detik):")
     print(tabulate(grayscale_results, headers=["File", "SIMD", "Non-SIMD"], tablefmt="github"))
 
@@ -131,7 +121,6 @@ def show_cli_result_gui(grayscale_results, edge_results):
 
     tab_control = ttk.Notebook(result_window)
 
-    # Tab Grayscale
     tab_gray = ttk.Frame(tab_control)
     tab_control.add(tab_gray, text="Grayscale")
 
@@ -145,7 +134,6 @@ def show_cli_result_gui(grayscale_results, edge_results):
 
     tree_gray.pack(fill="both", expand=True)
 
-    # Tab Edge Detection
     tab_edge = ttk.Frame(tab_control)
     tab_control.add(tab_edge, text="Edge Detection")
 

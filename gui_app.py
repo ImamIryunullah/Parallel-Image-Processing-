@@ -147,7 +147,7 @@ def launch_gui():
 
     frame = Frame(root)
     frame.pack()
-
+    
     log_output = Text(frame, height=20, width=60)
     log_output.pack(side="left", padx=5, pady=5)
 

@@ -18,11 +18,11 @@ def run_cli_mode(folder, status_label, btn_cli, btn_gui, progress, log_text):
 
             for line in process.stdout:
                 log_text.insert(tk.END, line)
-                log_text.see(tk.END)  # Auto-scroll ke bawah
+                log_text.see(tk.END)  
 
             process.wait()
             if process.returncode == 0:
-                messagebox.showinfo("Selesai", "✅ Proses CLI selesai.")
+                messagebox.showinfo("Selesai", "Proses CLI selesai.")
             else:
                 messagebox.showerror("Error", f"Proses CLI gagal. (Kode keluar: {process.returncode})")
 
@@ -64,7 +64,6 @@ def select_cli_folder(status_label, btn_cli, btn_gui, progress, log_text):
 def main():
     root = tk.Tk()
     root.title("GraviPix (Grayscale & Vision Pixel)")
-
     w, h = 600, 500
     ws = root.winfo_screenwidth()
     hs = root.winfo_screenheight()
