@@ -57,7 +57,7 @@ def run_gui_mode(status_label, btn_cli, btn_gui, progress):
     threading.Thread(target=task, daemon=True).start()
 
 def select_cli_folder(status_label, btn_cli, btn_gui, progress, log_text):
-    folder_selected = filedialog.askdirectory(title="Pilih Folder Input Gambar")
+    folder_selected = filedialog.askdirectory(title="Pilih Folder Untuk Input Gambar")
     if folder_selected:
         run_cli_mode(folder_selected, status_label, btn_cli, btn_gui, progress, log_text)
 
